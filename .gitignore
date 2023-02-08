@@ -1,0 +1,7 @@
+data/
+*.dylib
+
+
+# Added by cargo
+
+/target
