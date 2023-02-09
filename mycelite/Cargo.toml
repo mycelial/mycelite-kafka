@@ -8,4 +8,4 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-mycelite = {path = "../../mycelite/mycelite" }
+mycelite = { git = "https://github.com/mycelial/mycelite", tag = "v0.2.0" }

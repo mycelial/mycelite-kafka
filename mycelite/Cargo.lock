@@ -66,6 +66,7 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 [[package]]
 name = "block"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "block_macro",
 ]
@@ -73,6 +74,7 @@ dependencies = [
 [[package]]
 name = "block_macro"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -282,6 +284,7 @@ dependencies = [
 [[package]]
 name = "journal"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "block",
  "chrono",
@@ -329,6 +332,7 @@ dependencies = [
 [[package]]
 name = "libsqlite-sys"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "bindgen",
  "pkg-config",
@@ -376,6 +380,7 @@ dependencies = [
 [[package]]
 name = "mycelite"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "base64 0.21.0",
  "journal",
@@ -441,6 +446,7 @@ checksum = "6f61fba1741ea2b3d6a1e3178721804bb716a68a6aeba1149b5d52e3d464ea66"
 [[package]]
 name = "page_parser"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "block",
  "serde",
@@ -579,6 +585,7 @@ dependencies = [
 [[package]]
 name = "serde_sqlite"
 version = "0.1.0"
+source = "git+https://github.com/mycelial/mycelite?tag=v0.2.0#8d033d1296eea9662a09bf4411f2c06726f538d7"
 dependencies = [
  "block",
  "serde",
