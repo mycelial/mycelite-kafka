@@ -17,17 +17,13 @@ struct Config {
     #[clap(short, long, default_value = "db.sqlite3")]
     database: String,
     #[clap(short, long, default_value = "target/debug/libmycelite")]
-    extension_path: String
-}
-
-fn init_logger() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init()
+    extension_path: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = Config::parse();
-    init_logger();
+    env_logger::init();
 
     // poll topics and launch consumers periodically
     let mut consumers: HashMap<String, MyceliteBridgeHandle> = HashMap::new();
@@ -45,14 +41,14 @@ async fn main() -> Result<()> {
                 for topic in topics {
                     // FIXME: 'private topics'
                     if topic.starts_with("__") {
-                        continue
+                        continue;
                     }
                     match consumers.get(&topic) {
                         Some(handle) => {
                             if handle.alive() {
-                                continue
+                                continue;
                             }
-                        },
+                        }
                         None => (),
                     }
                     let res = MyceliteBridge::try_new(
@@ -60,7 +56,7 @@ async fn main() -> Result<()> {
                         "mycelite_bridge",
                         topic.as_str(),
                         cfg.database.as_str(),
-                        cfg.extension_path.as_str()
+                        cfg.extension_path.as_str(),
                     )
                     .await;
                     match res {

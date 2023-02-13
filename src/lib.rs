@@ -1,22 +1,18 @@
-#![allow(dead_code)]
-#![allow(unused)]
-
 use anyhow::Result;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer, ConsumerContext};
 use rdkafka::error::KafkaResult;
-use rdkafka::message::{Message as _, BorrowedMessage};
+use rdkafka::message::{BorrowedMessage, Message as _};
 use rdkafka::ClientConfig;
 use rdkafka::ClientContext;
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePool},
+    sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode},
     ConnectOptions,
 };
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-type Pool = SqlitePool;
 type Connection = SqliteConnection;
 
 async fn sqlite_connection(uri: &str, extension_path: &str) -> Result<Connection> {
@@ -42,7 +38,6 @@ pub struct MyceliteBridge {
     sqlite_conn: Connection,
 }
 
-
 impl MyceliteBridge {
     pub async fn try_new(
         brokers: &str,
@@ -65,7 +60,7 @@ impl MyceliteBridge {
             join_handle: tokio::spawn(async move {
                 match self.enter_loop(&mut rx).await {
                     Ok(()) => (),
-                    Err(e) => log::error!("({}) consumer failed with error: {:?}", self.topic, e)
+                    Err(e) => log::error!("({}) consumer failed with error: {:?}", self.topic, e),
                 };
             }),
             tx,
@@ -74,7 +69,7 @@ impl MyceliteBridge {
 
     async fn enter_loop(&mut self, rx: &mut UnboundedReceiver<Message>) -> Result<()> {
         self.create_table().await?;
-        let mut consumer = self.setup_consumer()?;
+        let consumer = self.setup_consumer()?;
         loop {
             tokio::select! {
                 res = rx.recv() => {
@@ -103,7 +98,7 @@ impl MyceliteBridge {
                                 message.offset(), message.partition(), message.key(), message.payload()
                             );
                             self.store(&message).await?;
-                            //consumer.commit_message(&message, CommitMode::Async)?;
+                            consumer.commit_message(&message, CommitMode::Async)?;
                         }
                     }
                 }
@@ -141,9 +136,12 @@ impl MyceliteBridge {
         Ok(())
     }
 
-    async fn store<'a>(&mut self, message: &'a BorrowedMessage<'a>) -> Result<()> {
+    async fn store<'a, 'b: 'a>(&mut self, message: &'a BorrowedMessage<'b>) -> Result<()> {
         // FIXME: cache query?
-        let query = format!("INSERT OR IGNORE INTO '{}'(partition, offset, key, payload) VALUES(?, ?, ?, ?)", self.topic);
+        let query = format!(
+            "INSERT OR IGNORE INTO '{}'(partition, offset, key, payload) VALUES(?, ?, ?, ?)",
+            self.topic
+        );
         sqlx::query(query.as_str())
             .bind(message.partition())
             .bind(message.offset())
@@ -166,7 +164,6 @@ impl MyceliteBridgeHandle {
     }
 }
 
-
 enum Message {
-    Quit
+    Quit,
 }

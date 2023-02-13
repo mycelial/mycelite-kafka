@@ -1,5 +1,7 @@
 data/
 *.dylib
+*.so
+db.*
 
 
 # Added by cargo

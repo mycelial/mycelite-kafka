@@ -1,3 +1,5 @@
+//! This script builds mycelite and copies resulting shared object in target folder of mycelite-kafka
+
 use std::env;
 use std::process::Command;
 
@@ -23,7 +25,6 @@ fn main() {
     println!("output_dir: {output_dir:?}");
     println!("mycelite_output_dir: {mycelite_output_dir:?}");
 
-
     let mut build_cmd = Command::new("cargo");
     build_cmd
         .env_clear()
@@ -32,11 +33,7 @@ fn main() {
         .arg("build")
         .arg(format!("--profile={build_profile}"));
     println!("build command: {build_cmd:?}");
-    build_cmd
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
+    build_cmd.spawn().unwrap().wait().unwrap();
 
     let mycelite_so_path = mycelite_so_path(mycelite_output_dir.as_path());
     println!("mycelite_so_path: {mycelite_so_path:?}");
@@ -44,16 +41,13 @@ fn main() {
     let mut copy_cmd = Command::new("cp");
     copy_cmd
         .arg(mycelite_so_path.as_path())
-        .arg(mycelite_so_output_path(mycelite_so_path.as_path(), output_dir.as_path()));
+        .arg(mycelite_so_output_path(
+            mycelite_so_path.as_path(),
+            output_dir.as_path(),
+        ));
     println!("copy command: {copy_cmd:?}");
-    copy_cmd
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-
+    copy_cmd.spawn().unwrap().wait().unwrap();
 }
-
 
 fn output_dir(root_dir: &std::path::Path, profile: &str) -> std::path::PathBuf {
     let mut output_dir: std::path::PathBuf = root_dir.into();
@@ -74,12 +68,15 @@ fn mycelite_so_path(output_dir: &std::path::Path) -> std::path::PathBuf {
     let mut path: std::path::PathBuf = output_dir.into();
     let mut found = false;
     println!("path: {:?}", path);
-    for entry in std::fs::read_dir(path.as_path()).unwrap().map(|e| e.unwrap()) {
+    for entry in std::fs::read_dir(path.as_path())
+        .unwrap()
+        .map(|e| e.unwrap())
+    {
         match entry.file_name().as_os_str().to_str().unwrap() {
             e if e == "libmycelite_dynamic.so" || e == "libmycelite_dynamic.dylib" => {
                 path.push(e);
                 found = true;
-            },
+            }
             _ => (),
         }
     }
@@ -89,7 +86,10 @@ fn mycelite_so_path(output_dir: &std::path::Path) -> std::path::PathBuf {
     path
 }
 
-fn mycelite_so_output_path(so_path: &std::path::Path, output_dir: &std::path::Path) -> std::path::PathBuf {
+fn mycelite_so_output_path(
+    so_path: &std::path::Path,
+    output_dir: &std::path::Path,
+) -> std::path::PathBuf {
     let extension = so_path.extension().unwrap().to_str().unwrap();
     let mut output: std::path::PathBuf = output_dir.into();
     output.push(format!("libmycelite.{extension}"));

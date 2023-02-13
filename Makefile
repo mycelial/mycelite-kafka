@@ -5,7 +5,7 @@ run_redpandas:
 		-p 8082:8082 \
 		-p 9092:9092 \
 		-p 9644:9644 \
-		-v $(PWD)/data:/var/lib/redpanda/data \
+		-v $(PWD)/data/:/var/lib/redpanda/data/ \
 		docker.redpanda.com/vectorized/redpanda:latest \
 		redpanda start \
 		--overprovisioned \
@@ -27,3 +27,8 @@ stop_redpandas:
 clean: stop_redpandas
 	rm -f db.sqlite3*
 	rm -rf data/
+
+
+.PHONY:
+run_producer:
+	cargo run --example producer

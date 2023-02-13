@@ -2,7 +2,6 @@ use anyhow::Result;
 use std::time::Duration;
 
 use clap::Parser;
-use rdkafka::client::ClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
@@ -40,7 +39,7 @@ impl XorShift {
 }
 
 async fn producer(topic_name: String, rate: usize, brokers: &str) {
-    let delay = std::time::Duration::from_millis((1000.0 / rate as f32) as u64);
+    let delay = Duration::from_millis((1000.0 / rate as f32) as u64);
     let client: &FutureProducer = &ClientConfig::new()
         .set("bootstrap.servers", brokers)
         .set("message.timeout.ms", "5000")
@@ -49,7 +48,7 @@ async fn producer(topic_name: String, rate: usize, brokers: &str) {
 
     let mut rng = XorShift::new();
     loop {
-        let payload = format!("{}", rng.next());
+        let payload = format!("payload-{}", rng.next());
         let message = FutureRecord::to(topic_name.as_str())
             .key(payload.as_bytes())
             .payload(payload.as_bytes());
