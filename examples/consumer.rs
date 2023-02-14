@@ -72,6 +72,9 @@ async fn main() -> Result<()> {
             Err(e) => log::error!("failed to fetch metadata: {:?}", e),
         };
         tokio::time::sleep(Duration::from_secs(10)).await;
+        break;
     }
+    drop(consumers);
+    tokio::time::sleep(Duration::from_secs(10)).await;
     Ok(())
 }

@@ -162,6 +162,11 @@ impl MyceliteBridgeHandle {
     pub fn alive(&self) -> bool {
         !self.tx.is_closed()
     }
+
+    pub async fn quit(self) {
+        self.tx.send(Message::Quit).ok();
+        self.join_handle.await.ok();
+    }
 }
 
 enum Message {

@@ -4,11 +4,6 @@ version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[[bin]]
-name = "mycelite_bridge"
-path = "src/bin/mycelite_bridge/main.rs"
-
 [dependencies]
 rdkafka = "0.29"
 tokio = { version = "1", features = ["full"] }
