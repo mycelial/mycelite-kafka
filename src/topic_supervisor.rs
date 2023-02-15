@@ -11,6 +11,7 @@ pub struct TopicSupervisor {
     brokers: String,
     extension_path: String,
     database_path: String,
+    group_id: String,
 }
 
 pub struct TopicSupervisorHandle {
@@ -39,12 +40,13 @@ enum Message {
 }
 
 impl TopicSupervisor {
-    pub fn new(brokers: &str, extension_path: &str, database_path: &str) -> Self {
+    pub fn new(brokers: &str, extension_path: &str, database_path: &str, group_id: &str) -> Self {
         Self {
             consumers: BTreeMap::new(),
             brokers: brokers.into(),
             extension_path: extension_path.into(),
             database_path: database_path.into(),
+            group_id: group_id.into(),
         }
     }
 
@@ -81,7 +83,7 @@ impl TopicSupervisor {
                                 }
                                 let res = MyceliteBridge::try_new(
                                     self.brokers.as_str(),
-                                    "mycelite_bridge",
+                                    self.group_id.as_str(),
                                     topic.as_str(),
                                     self.database_path.as_str(),
                                     self.extension_path.as_str(),

@@ -15,13 +15,15 @@ struct Config {
     database: String,
     #[clap(short, long, default_value = "target/debug/libmycelite")]
     extension_path: String,
+    #[clap(short, long, default_value = "mycelite_bridge")]
+    group_id: String
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cfg = Config::parse();
     env_logger::init();
-    TopicSupervisor::new(&cfg.brokers, &cfg.extension_path, &cfg.database)
+    TopicSupervisor::new(&cfg.brokers, &cfg.extension_path, &cfg.database, &cfg.group_id)
         .spawn()
         .join()
         .await?;
