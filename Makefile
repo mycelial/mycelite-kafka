@@ -28,7 +28,10 @@ clean: stop_redpandas
 	rm -f db.sqlite3*
 	rm -rf data/
 
-
-.PHONY:
+.PHONY: run_producer
 run_producer:
 	cargo run --example producer
+
+.PHONY: run_consumer
+run_consumer:
+	cargo run --example consumer

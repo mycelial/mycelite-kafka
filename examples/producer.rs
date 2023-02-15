@@ -54,7 +54,7 @@ async fn producer(topic_name: String, rate: usize, brokers: &str) {
             .payload(payload.as_bytes());
         match client.send(message, Timeout::Never).await {
             Ok(_) => (),
-            Err((e, _)) => return println!("error: {:?}", e),
+            Err((e, _)) => return println!("error: {e:?}"),
         }
         tokio::time::sleep(delay).await;
     }
@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
 
     let mut handles = (0..cfg.topics)
         .map(|topic| {
-            let topic_name = format!("topic-{}", topic);
+            let topic_name = format!("topic-{topic}");
             tokio::spawn(async move { producer(topic_name, cfg.rate, brokers).await })
         })
         .collect::<Vec<_>>();
