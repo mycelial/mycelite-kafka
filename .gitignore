@@ -3,6 +3,7 @@ data/
 *.so
 db.*
 
+Cargo.lock
 
 # Added by cargo
 
