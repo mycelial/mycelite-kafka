@@ -1,5 +1,12 @@
-mod mycelite_bridge;
-mod topic_supervisor;
+//! Kafka with mycelite, mycelite with kafka.
 
-pub use mycelite_bridge::{MyceliteBridge, MyceliteBridgeHandle};
-pub use topic_supervisor::{TopicSupervisor, TopicSupervisorHandle};
+mod kafka_mycelite_bridge;
+mod mycelite_kafka_bridge;
+
+pub use kafka_mycelite_bridge::{
+    KafkaMyceliteBridge, KafkaMyceliteBridgeHandle, TopicPoller, TopicPollerHandle,
+};
+
+pub use mycelite_kafka_bridge::{
+    MyceliteKafkaBridge, MyceliteKafkaBridgeHandle
+};
