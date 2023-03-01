@@ -46,9 +46,9 @@ async fn producer(topic_name: String, rate: usize, brokers: &str) {
         .create()
         .expect("failed to create producer");
 
-    let mut rng = XorShift::new();
+    let mut iter = 0..;
     loop {
-        let payload = format!("payload-{}", rng.next());
+        let payload = format!("payload-{}", iter.next().unwrap());
         let message = FutureRecord::to(topic_name.as_str())
             .key(payload.as_bytes())
             .payload(payload.as_bytes());
