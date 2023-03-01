@@ -60,7 +60,7 @@ impl KafkaMyceliteBridge {
         let (tx, mut rx) = unbounded_channel::<Message>();
         tokio::spawn(async move {
             match self.enter_loop(&mut rx).await {
-                Ok(()) => (),
+                Ok(()) => log::info!("mycelite bridge done"),
                 Err(e) => log::error!("failed with error: {:?}", e),
             };
         });
@@ -127,10 +127,10 @@ impl KafkaMyceliteBridge {
                                 );
                                 self.store(&message).await?;
                             } else {
-                              //log::info!(
-                              //    "restreamed message ignores: topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
-                              //    message.topic(), message.offset(), message.partition(), message.key(), message.payload()
-                              //);
+                                log::info!(
+                                    "restreamed message ignores: topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
+                                    message.topic(), message.offset(), message.partition(), message.key(), message.payload()
+                                );
                             }
                             consumer.commit_message(&message, CommitMode::Async)?;
                         }

@@ -75,8 +75,10 @@ impl TopicPoller {
                                 .into_iter()
                                 .filter(|topic| !(topic.name().starts_with("__") || self.topics.contains(topic.name())))
                                 .map(|topic| topic.name().to_string())
+                                .collect::<Vec<_>>()
                             {
-                                self.handle.add_topic(topic).ok();
+                                self.handle.add_topic(&topic).ok();
+                                self.topics.insert(topic);
                             }
                         }
                         Err(e) => log::error!("failed to fetch metadata: {:?}", e),

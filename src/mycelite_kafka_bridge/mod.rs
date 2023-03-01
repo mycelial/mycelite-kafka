@@ -108,7 +108,9 @@ impl MyceliteKafkaBridge {
                         },
                     }
                 },
-                Message::StoreOffset(db_path, topic, offset) => self.store_offset(&db_path, &topic, offset).await? ,
+                Message::StoreOffset(db_path, topic, offset) => {
+                    self.store_offset(&db_path, &topic, offset).await?
+                },
                 Message::Done(db_path) => {
                     if let Some((_, tx)) = restreamers.remove(&db_path) {
                         tx.send(()).ok();
@@ -162,7 +164,7 @@ impl MyceliteKafkaBridge {
 
     async fn store_offset(&mut self, db: &str, topic: &str, offset: i64) -> Result<()> {
         sqlx::query(
-            "INSERT INTO offsets(database, topic, offset) VALUES(?, ?, ?) ON CONFLICT(database, topic) DO UPDATE SET offset=excluded.offset"
+            "INSERT OR REPLACE INTO offsets(database, topic, offset) VALUES(?, ?, ?)"
         )
             .bind(db)
             .bind(topic)
@@ -289,7 +291,7 @@ impl Restreamer {
                     }
                 }
                 if let Some(value) = last_rowid {
-                    self.handle.store_offset(&self.db_path, &table, offset).await;
+                    self.handle.store_offset(&self.db_path, &table, value).await;
                     offset = value;
                 };
             }
