@@ -10,10 +10,16 @@ use rdkafka::util::Timeout;
 struct Config {
     #[clap(short, long, default_value = "1")]
     topics: usize,
+
     #[clap(short, long, default_value = "3")]
     rate: usize,
+
     #[clap(short, long, default_value = "localhost:9092")]
     brokers: String,
+
+    #[clap(short, long, default_value = None)]
+    count: Option<usize>,
+
 }
 
 struct XorShift {
@@ -38,7 +44,7 @@ impl XorShift {
     }
 }
 
-async fn producer(topic_name: String, rate: usize, brokers: &str) {
+async fn producer(topic_name: String, rate: usize, brokers: &str, count: Option<usize>) {
     let delay = Duration::from_millis((1000.0 / rate as f32) as u64);
     let client: &FutureProducer = &ClientConfig::new()
         .set("bootstrap.servers", brokers)
@@ -47,6 +53,7 @@ async fn producer(topic_name: String, rate: usize, brokers: &str) {
         .expect("failed to create producer");
 
     let mut iter = 0..;
+    let mut total = 0;
     loop {
         let payload = format!("payload-{}", iter.next().unwrap());
         let message = FutureRecord::to(topic_name.as_str())
@@ -55,6 +62,10 @@ async fn producer(topic_name: String, rate: usize, brokers: &str) {
         match client.send(message, Timeout::Never).await {
             Ok(_) => (),
             Err((e, _)) => return println!("error: {e:?}"),
+        }
+        total += 1;
+        if count.is_some() && Some(total) >= count {
+            break
         }
         tokio::time::sleep(delay).await;
     }
@@ -68,7 +79,7 @@ async fn main() -> Result<()> {
     let mut handles = (0..cfg.topics)
         .map(|topic| {
             let topic_name = format!("topic-{topic}");
-            tokio::spawn(async move { producer(topic_name, cfg.rate, brokers).await })
+            tokio::spawn(async move { producer(topic_name, cfg.rate, brokers, cfg.count).await })
         })
         .collect::<Vec<_>>();
     while let Some(handle) = handles.pop() {
