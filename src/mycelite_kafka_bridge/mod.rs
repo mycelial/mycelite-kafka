@@ -1,30 +1,22 @@
+use anyhow::Result;
 use rdkafka::config::ClientConfig;
+use rdkafka::message::{Header, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::message::{Header, OwnedHeaders};
-use anyhow::Result;
-use tokio::sync::mpsc::{
-    unbounded_channel,
-    UnboundedSender,
-    UnboundedReceiver,
-    error::TryRecvError,
-};
-use tokio::sync::oneshot::{
-    channel as oneshot_channel,
-    Sender as OneshotSender,
-};
-use std::str::FromStr;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection},
-    ConnectOptions,
-    Row
+    ConnectOptions, Row,
 };
 use std::collections::{HashMap, VecDeque};
+use std::str::FromStr;
+use tokio::sync::mpsc::{
+    error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender,
+};
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 
 #[derive(Debug)]
 pub struct MyceliteKafkaBridge {
     brokers: String,
-    database_path: String,
     sqlite_conn: Connection,
     tx: UnboundedSender<Message>,
     rx: UnboundedReceiver<Message>,
@@ -32,7 +24,7 @@ pub struct MyceliteKafkaBridge {
 
 #[derive(Debug, Clone)]
 pub struct MyceliteKafkaBridgeHandle {
-    tx: UnboundedSender<Message>
+    tx: UnboundedSender<Message>,
 }
 
 type Connection = SqliteConnection;
@@ -52,12 +44,12 @@ enum Message {
     Restream(OneshotSender<()>, String),
     /// Restreamer done with db
     Done(String),
-    /// Store new offset 
+    /// Store new offset
     StoreOffset(String, String, i64),
     /// Wait for 'actor' to quit
     Wait(OneshotSender<()>),
     /// Ask 'actor' to quit
-    Quit
+    Quit,
 }
 
 impl MyceliteKafkaBridge {
@@ -65,7 +57,6 @@ impl MyceliteKafkaBridge {
         let (tx, rx) = unbounded_channel();
         Ok(Self {
             brokers: brokers.into(),
-            database_path: database_path.into(),
             sqlite_conn: sqlite_connection(database_path).await?,
             tx,
             rx,
@@ -86,7 +77,8 @@ impl MyceliteKafkaBridge {
         let mut waiters = vec![];
         self.create_table().await?;
         let mut queue: HashMap<String, VecDeque<OneshotSender<()>>> = HashMap::new();
-        let mut restreamers: HashMap<String, (RestreamerHandle, OneshotSender<()>)> = HashMap::new();
+        let mut restreamers: HashMap<String, (RestreamerHandle, OneshotSender<()>)> =
+            HashMap::new();
         while let Some(message) = self.rx.recv().await {
             match message {
                 Message::Wait(tx) => waiters.push(tx),
@@ -95,22 +87,20 @@ impl MyceliteKafkaBridge {
                     match restreamers.get(&db_path) {
                         Some(_) => {
                             queue.entry(db_path).and_modify(|q| q.push_back(tx));
-                        },
-                        None => {
-                            match self.spawn_restreamer(&db_path).await {
-                                Ok(restreamer) => {
-                                    restreamers.insert(db_path, (restreamer, tx));
-                                },
-                                Err(e) => {
-                                    log::error!("failed to spawn restreamer for {db_path}: {e:?}")
-                                }
+                        }
+                        None => match self.spawn_restreamer(&db_path).await {
+                            Ok(restreamer) => {
+                                restreamers.insert(db_path, (restreamer, tx));
+                            }
+                            Err(e) => {
+                                log::error!("failed to spawn restreamer for {db_path}: {e:?}")
                             }
                         },
                     }
-                },
+                }
                 Message::StoreOffset(db_path, topic, offset) => {
                     self.store_offset(&db_path, &topic, offset).await?
-                },
+                }
                 Message::Done(db_path) => {
                     if let Some((_, tx)) = restreamers.remove(&db_path) {
                         tx.send(()).ok();
@@ -121,14 +111,14 @@ impl MyceliteKafkaBridge {
                             match self.spawn_restreamer(&db_path).await {
                                 Ok(restreamer) => {
                                     restreamers.insert(db_path, (restreamer, tx));
-                                },
+                                }
                                 Err(e) => {
                                     log::error!("failed to spawn restreamer for {db_path}: {e:?}")
                                 }
                             }
                         }
                     }
-                },
+                }
                 Message::Quit => break,
             }
         }
@@ -148,11 +138,17 @@ impl MyceliteKafkaBridge {
             acc
         });
         let handle = self.handle();
-        Ok(Restreamer::new(self.brokers.as_str(), db_path, offsets, handle).await?.spawn())
+        Ok(
+            Restreamer::new(self.brokers.as_str(), db_path, offsets, handle)
+                .await?
+                .spawn(),
+        )
     }
 
     fn handle(&self) -> MyceliteKafkaBridgeHandle {
-        MyceliteKafkaBridgeHandle { tx: self.tx.clone() }
+        MyceliteKafkaBridgeHandle {
+            tx: self.tx.clone(),
+        }
     }
 
     async fn create_table(&mut self) -> Result<()> {
@@ -163,9 +159,7 @@ impl MyceliteKafkaBridge {
     }
 
     async fn store_offset(&mut self, db: &str, topic: &str, offset: i64) -> Result<()> {
-        sqlx::query(
-            "INSERT OR REPLACE INTO offsets(database, topic, offset) VALUES(?, ?, ?)"
-        )
+        sqlx::query("INSERT OR REPLACE INTO offsets(database, topic, offset) VALUES(?, ?, ?)")
             .bind(db)
             .bind(topic)
             .bind(offset)
@@ -182,10 +176,11 @@ impl MyceliteKafkaBridgeHandle {
 
     pub async fn wait(&self) {
         let (tx, rx) = oneshot_channel();
-        { self.tx.send(Message::Wait(tx)).ok(); }
+        {
+            self.tx.send(Message::Wait(tx)).ok();
+        }
         rx.await.ok();
     }
-
 
     pub async fn restream<S: Into<String>>(&self, db_path: S) -> Result<()> {
         let (tx, rx) = oneshot_channel();
@@ -198,10 +193,11 @@ impl MyceliteKafkaBridgeHandle {
     }
 
     async fn store_offset(&self, db: &str, topic: &str, offset: i64) {
-        self.tx.send(Message::StoreOffset(db.into(), topic.into(), offset)).ok();
+        self.tx
+            .send(Message::StoreOffset(db.into(), topic.into(), offset))
+            .ok();
     }
 }
-
 
 struct Restreamer {
     brokers: String,
@@ -212,13 +208,18 @@ struct Restreamer {
 }
 
 impl Restreamer {
-    async fn new(brokers: &str, db_path: &str, offsets: HashMap<String, i64>, handle: MyceliteKafkaBridgeHandle) -> Result<Self> {
+    async fn new(
+        brokers: &str,
+        db_path: &str,
+        offsets: HashMap<String, i64>,
+        handle: MyceliteKafkaBridgeHandle,
+    ) -> Result<Self> {
         Ok(Self {
             brokers: brokers.into(),
             db_path: db_path.into(),
             sql_conn: sqlite_connection(db_path).await?,
             offsets,
-            handle
+            handle,
         })
     }
 
@@ -230,19 +231,20 @@ impl Restreamer {
             };
             self.handle.done(&self.db_path).await;
         });
-        RestreamerHandle {tx}
+        RestreamerHandle { tx }
     }
 
     async fn get_tables(&mut self) -> Result<Vec<String>> {
-        let tables = sqlx::query(
-            "SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"
-        )
+        let tables = sqlx::query("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")
             .fetch_all(&mut self.sql_conn)
             .await?;
 
-        Ok(tables.iter().map(|row| row.get::<String, _>(0)).collect::<Vec<_>>())
+        Ok(tables
+            .iter()
+            .map(|row| row.get::<String, _>(0))
+            .collect::<Vec<_>>())
     }
-    
+
     async fn enter_loop(&mut self, rx: &mut UnboundedReceiver<()>) -> Result<()> {
         let client: &FutureProducer = &ClientConfig::new()
             .set("bootstrap.servers", self.brokers.as_str())
@@ -250,8 +252,7 @@ impl Restreamer {
             .create()
             .expect("failed to create producer");
 
-    'outer:
-        for table in self.get_tables().await? {
+        'outer: for table in self.get_tables().await? {
             match rx.try_recv() {
                 Err(TryRecvError::Disconnected) => break 'outer,
                 Err(TryRecvError::Empty) => (),
@@ -260,21 +261,25 @@ impl Restreamer {
 
             let mut offset = self.offsets.get(&table).copied().unwrap_or(0_i64);
 
-        'inner:
-            loop {
-
-                let batch = sqlx::query(
-                    &format!(r#"SELECT rowid, key, payload FROM "{table}" WHERE rowid > ? LIMIT 512"#)
-                )
-                    .bind(offset)
-                    .fetch_all(&mut self.sql_conn)
-                    .await?
-                    .iter()
-                    .map(|row| (row.get::<i64, _>(0), row.get::<Vec<u8>, _>(1), row.get::<Vec<u8>, _>(2)))
-                    .collect::<Vec<_>>();
+            'inner: loop {
+                let batch = sqlx::query(&format!(
+                    r#"SELECT rowid, key, payload FROM "{table}" WHERE rowid > ? LIMIT 512"#
+                ))
+                .bind(offset)
+                .fetch_all(&mut self.sql_conn)
+                .await?
+                .iter()
+                .map(|row| {
+                    (
+                        row.get::<i64, _>(0),
+                        row.get::<Vec<u8>, _>(1),
+                        row.get::<Vec<u8>, _>(2),
+                    )
+                })
+                .collect::<Vec<_>>();
 
                 if batch.is_empty() {
-                    break 'inner
+                    break 'inner;
                 }
 
                 let last_rowid = batch.last().map(|row| row.0);
@@ -287,7 +292,7 @@ impl Restreamer {
                             value: Some("ignore".as_bytes()),
                         }));
                     if let Err((e, _)) = client.send(message, Timeout::Never).await {
-                        return Err(e.into())
+                        return Err(e.into());
                     }
                 }
                 if let Some(value) = last_rowid {
@@ -295,13 +300,12 @@ impl Restreamer {
                     offset = value;
                 };
             }
-            
         }
         Ok(())
     }
 }
 
+#[allow(unused)]
 struct RestreamerHandle {
-    tx: UnboundedSender<()>
+    tx: UnboundedSender<()>,
 }
-

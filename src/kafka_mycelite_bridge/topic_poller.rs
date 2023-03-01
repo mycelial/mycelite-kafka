@@ -1,11 +1,10 @@
 use crate::kafka_mycelite_bridge::KafkaMyceliteBridgeHandle;
-use anyhow::Result;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender };
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 
 pub struct TopicPoller {
     topics: HashSet<String>,
@@ -25,7 +24,7 @@ impl TopicPollerHandle {
 
     pub async fn wait(&self) {
         let (tx, rx) = oneshot_channel();
-        { self.tx.send(Message::Wait(tx)).ok() };
+        self.tx.send(Message::Wait(tx)).ok();
         rx.await.ok();
     }
 
@@ -45,7 +44,7 @@ impl TopicPoller {
         Self {
             topics: HashSet::new(),
             brokers: brokers.into(),
-            handle
+            handle,
         }
     }
 
@@ -72,7 +71,7 @@ impl TopicPoller {
                         Ok(metadata) => {
                             for topic in metadata
                                 .topics()
-                                .into_iter()
+                                .iter()
                                 .filter(|topic| !(topic.name().starts_with("__") || self.topics.contains(topic.name())))
                                 .map(|topic| topic.name().to_string())
                                 .collect::<Vec<_>>()

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer};
-use rdkafka::message::{Headers, BorrowedMessage, Message as _};
+use rdkafka::message::{BorrowedMessage, Headers, Message as _};
 use rdkafka::ClientConfig;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode},
@@ -11,9 +11,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::oneshot::{
-    channel as oneshot_channel, Sender as OneshotSender,
-};
+use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 
 type Connection = SqliteConnection;
 
@@ -155,30 +153,25 @@ impl KafkaMyceliteBridge {
     }
 
     async fn create_table(&mut self, table: &str) -> Result<()> {
-        sqlx::query(
-            &format!(
-                r#"CREATE TABLE IF NOT EXISTS "{}" (
+        sqlx::query(&format!(
+            r#"CREATE TABLE IF NOT EXISTS "{table}" (
                     partition INT NOT NULL,
                     offset INT NOT NULL,
                     key BLOB,
                     payload BLOB,
                     PRIMARY KEY (partition, offset)
                 )"#,
-                table
-            )
-        )
+        ))
         .fetch_all(&mut self.sqlite_conn)
         .await?;
         Ok(())
     }
 
     async fn store<'a, 'b: 'a>(&mut self, message: &'a BorrowedMessage<'b>) -> Result<()> {
-        sqlx::query(
-            &format!(
-                r#"INSERT OR IGNORE INTO "{}" (partition, offset, key, payload) VALUES(?, ?, ?, ?)"#,
-                message.topic(),
-            )
-        )
+        sqlx::query(&format!(
+            r#"INSERT OR IGNORE INTO "{}" (partition, offset, key, payload) VALUES(?, ?, ?, ?)"#,
+            message.topic(),
+        ))
         .bind(message.partition())
         .bind(message.offset())
         .bind(message.key().unwrap_or(&[]))
@@ -214,7 +207,7 @@ impl KafkaMyceliteBridgeHandle {
 
     pub async fn wait(&self) {
         let (tx, rx) = oneshot_channel();
-        { self.tx.send(Message::Wait(tx)).ok() };
+        self.tx.send(Message::Wait(tx)).ok();
         rx.await.ok();
     }
 

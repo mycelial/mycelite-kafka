@@ -19,7 +19,6 @@ struct Config {
 
     #[clap(short, long, default_value = None)]
     count: Option<usize>,
-
 }
 
 struct XorShift {
@@ -65,7 +64,7 @@ async fn producer(topic_name: String, rate: usize, brokers: &str, count: Option<
         }
         total += 1;
         if count.is_some() && Some(total) >= count {
-            break
+            break;
         }
         tokio::time::sleep(delay).await;
     }

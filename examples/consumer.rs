@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use mycelite_kafka::{TopicPoller, KafkaMyceliteBridge};
+use mycelite_kafka::{KafkaMyceliteBridge, TopicPoller};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -23,7 +23,15 @@ struct Config {
 async fn main() -> Result<()> {
     let cfg = Config::parse();
     env_logger::init();
-    let bridge_handle = KafkaMyceliteBridge::try_new(&cfg.brokers, &cfg.group_id, &cfg.database, &cfg.extension_path, &[]).await?.spawn();
+    let bridge_handle = KafkaMyceliteBridge::try_new(
+        &cfg.brokers,
+        &cfg.group_id,
+        &cfg.database,
+        &cfg.extension_path,
+        &[],
+    )
+    .await?
+    .spawn();
     let topic_handle = TopicPoller::new(&cfg.brokers, bridge_handle.clone()).spawn();
     bridge_handle.wait().await;
     topic_handle.wait().await;
