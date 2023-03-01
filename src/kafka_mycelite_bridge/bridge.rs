@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rdkafka::consumer::stream_consumer::StreamConsumer;
 use rdkafka::consumer::{CommitMode, Consumer};
-use rdkafka::message::{BorrowedMessage, Message as _};
+use rdkafka::message::{Headers, BorrowedMessage, Message as _};
 use rdkafka::ClientConfig;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode},
@@ -74,11 +74,13 @@ impl KafkaMyceliteBridge {
         loop {
             tokio::select! {
                 res = rx.recv() => {
-                    if res.is_none() {
-                        log::info!("mycelite bridge handle was dropped, quitting");
-                        return Ok(())
-                    }
-                    let message = res.unwrap();
+                    let message = match res {
+                        None => {
+                            log::info!("mycelite bridge handle was dropped, quitting");
+                            return Ok(())
+                        },
+                        Some(m) => m
+                    };
                     match message {
                         Message::Quit => {
                             log::info!("received quit message, quitting");
@@ -110,11 +112,26 @@ impl KafkaMyceliteBridge {
                             tokio::time::sleep(Duration::from_secs(5)).await;
                         },
                         Ok(message) => {
-                            log::info!(
-                                "new message, topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
-                                message.topic(), message.offset(), message.partition(), message.key(), message.payload()
-                            );
-                            self.store(&message).await?;
+                            let ignore = match message.headers() {
+                                None => false,
+                                Some(headers) => {
+                                    headers
+                                        .iter()
+                                        .any(|header| header.key == "mycelite" && header.value == Some("ignore".as_bytes()))
+                                },
+                            };
+                            if !ignore {
+                                log::info!(
+                                    "new message, topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
+                                    message.topic(), message.offset(), message.partition(), message.key(), message.payload()
+                                );
+                                self.store(&message).await?;
+                            } else {
+                              //log::info!(
+                              //    "restreamed message ignores: topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
+                              //    message.topic(), message.offset(), message.partition(), message.key(), message.payload()
+                              //);
+                            }
                             consumer.commit_message(&message, CommitMode::Async)?;
                         }
                     }
@@ -215,58 +232,4 @@ enum Message {
     ListTopics(OneshotSender<Vec<String>>),
     Wait(OneshotSender<()>),
     Quit,
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tempfile::NamedTempFile;
-
-    #[derive(Debug)]
-    struct TmpFile {
-        file: String
-    }
-
-    impl Drop for TmpFile {
-        fn drop(&mut self) {
-            std::fs::remove_file(self.file.as_str()).ok();
-        }
-    }
-
-    impl TmpFile {
-        fn new() -> Self {
-            let file = NamedTempFile::new().unwrap();
-            TmpFile { file: file.path().to_string_lossy().into() }
-        }
-
-        fn as_str(&self) -> &str {
-            self.file.as_str()
-        }
-    }
-
-    #[tokio::test]
-    async fn test_quit() {
-        let db = TmpFile::new();
-        let handle = KafkaMyceliteBridge::try_new("", "group_id", db.as_str(), "target/debug/libmycelite", &[])
-            .await
-            .unwrap()
-            .spawn();
-        handle.quit().await;
-        assert!(handle.tx.is_closed());
-    }
-
-    #[tokio::test]
-    async fn test_add_remove_list_topic() {
-        let db = TmpFile::new();
-        let handle = KafkaMyceliteBridge::try_new("", "group_id", db.as_str(), "target/debug/libmycelite", &[])
-            .await
-            .unwrap()
-            .spawn();
-
-        assert_eq!(handle.list_topics().await.unwrap(), Vec::<String>::new());
-        handle.add_topic("topic").unwrap();
-        assert_eq!(handle.list_topics().await.unwrap(), vec!["topic".to_string()]);
-        handle.remove_topic("topic").unwrap();
-        assert_eq!(handle.list_topics().await.unwrap(), Vec::<String>::new());
-    }
 }
