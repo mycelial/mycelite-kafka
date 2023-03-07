@@ -1,8 +1,11 @@
 use anyhow::Result;
-use rdkafka::consumer::stream_consumer::StreamConsumer;
-use rdkafka::consumer::{CommitMode, Consumer};
+use rdkafka::consumer::{
+    CommitMode, Consumer,
+    stream_consumer::StreamConsumer,
+};
+use rdkafka::error::KafkaError;
 use rdkafka::message::{BorrowedMessage, Headers, Message as _};
-use rdkafka::ClientConfig;
+use rdkafka::{ClientConfig, TopicPartitionList, Offset};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode},
     ConnectOptions,
@@ -36,6 +39,11 @@ pub struct KafkaMyceliteBridge {
     group_id: String,
     topics: HashSet<String>,
     sqlite_conn: Connection,
+    topic_partition_list: TopicPartitionList,
+    transaction_started: bool,
+    insert_count: u64,
+    last_insert_count_tick: u64,
+    batch_size: u64,
 }
 
 impl KafkaMyceliteBridge {
@@ -51,6 +59,11 @@ impl KafkaMyceliteBridge {
             group_id: group_id.into(),
             topics: HashSet::from_iter(topics.iter().map(|s| s.to_string())),
             sqlite_conn: sqlite_connection(sqlite_db, extension_path).await?,
+            topic_partition_list: TopicPartitionList::new(),
+            transaction_started: false,
+            insert_count: 0,
+            last_insert_count_tick: 0,
+            batch_size: 8192
         })
     }
 
@@ -69,6 +82,7 @@ impl KafkaMyceliteBridge {
         let consumer = self.setup_consumer()?;
         consumer.subscribe(&self.get_topics()).ok();
         let mut waiters = vec![];
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
         loop {
             tokio::select! {
                 res = rx.recv() => {
@@ -103,10 +117,20 @@ impl KafkaMyceliteBridge {
                         },
                     }
                 },
+                _tick = interval.tick() => {
+                    if self.last_insert_count_tick == self.insert_count {
+                        self.commit(&consumer).await?;
+                    } else {
+                        self.last_insert_count_tick = self.insert_count
+                    }
+                },
                 res = consumer.recv() => {
                     match res {
                         Err(e) => {
-                            log::error!("failed to receive message: {e:?}");
+                            match e {
+                                KafkaError::MessageConsumption(_) => (),
+                                _ => log::error!("failed to receive message: {e:?}")
+                            };
                             tokio::time::sleep(Duration::from_secs(5)).await;
                         },
                         Ok(message) => {
@@ -123,17 +147,20 @@ impl KafkaMyceliteBridge {
                                     "new message, topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
                                     message.topic(), message.offset(), message.partition(), message.key(), message.payload()
                                 );
+                                self.begin().await?;
                                 self.store(&message).await?;
+                                if self.insert_count >= self.batch_size {
+                                    self.commit(&consumer).await?;
+                                }
                             } else {
                                 log::info!(
                                     "restreamed message ignores: topic: {}, offset: {}, partion: {}, key: {:?}, value: {:?}",
                                     message.topic(), message.offset(), message.partition(), message.key(), message.payload()
                                 );
                             }
-                            consumer.commit_message(&message, CommitMode::Async)?;
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -167,6 +194,30 @@ impl KafkaMyceliteBridge {
         Ok(())
     }
 
+    async fn begin(&mut self) -> Result<()> {
+        if self.transaction_started {
+            return Ok(())
+        }
+        sqlx::query("BEGIN")
+            .execute(&mut self.sqlite_conn)
+            .await?;
+        self.transaction_started = true;
+        Ok(())
+    }
+
+    async fn commit(&mut self, consumer: &StreamConsumer) -> Result<()> {
+        if !self.transaction_started || self.insert_count == 0 {
+            return Ok(())
+        }
+        sqlx::query("COMMIT")
+            .execute(&mut self.sqlite_conn)
+            .await?;
+        self.transaction_started = false;
+        self.insert_count = 0;
+        consumer.commit(&self.topic_partition_list, CommitMode::Async)?;
+        Ok(())
+    }
+
     async fn store<'a, 'b: 'a>(&mut self, message: &'a BorrowedMessage<'b>) -> Result<()> {
         sqlx::query(&format!(
             r#"INSERT OR IGNORE INTO "{}" (partition, offset, key, payload) VALUES(?, ?, ?, ?)"#,
@@ -178,6 +229,10 @@ impl KafkaMyceliteBridge {
         .bind(message.payload().unwrap_or(&[]))
         .execute(&mut self.sqlite_conn)
         .await?;
+        self.insert_count += 1;
+        self.topic_partition_list.add_partition_offset(
+            message.topic(), message.partition(), Offset::Offset(message.offset() + 1)
+        )?;
         Ok(())
     }
 }
