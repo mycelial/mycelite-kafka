@@ -13,6 +13,7 @@ use tokio::sync::mpsc::{
     error::TryRecvError, unbounded_channel, UnboundedReceiver, UnboundedSender,
 };
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use futures::StreamExt;
 
 #[derive(Debug)]
 pub struct MyceliteKafkaBridge {
@@ -205,6 +206,7 @@ struct Restreamer {
     sql_conn: Connection,
     offsets: HashMap<String, i64>,
     handle: MyceliteKafkaBridgeHandle,
+    limit: usize,
 }
 
 impl Restreamer {
@@ -220,6 +222,7 @@ impl Restreamer {
             sql_conn: sqlite_connection(db_path).await?,
             offsets,
             handle,
+            limit: 2048,
         })
     }
 
@@ -252,49 +255,47 @@ impl Restreamer {
             .create()
             .expect("failed to create producer");
 
-        'outer: for table in self.get_tables().await? {
-            match rx.try_recv() {
-                Err(TryRecvError::Disconnected) => break 'outer,
-                Err(TryRecvError::Empty) => (),
-                Ok(()) => break,
-            };
+        for table in self.get_tables().await? {
+            let table = &table;
 
-            let mut offset = self.offsets.get(&table).copied().unwrap_or(0_i64);
+            let mut offset = self.offsets.get(table).copied().unwrap_or(0_i64);
+            loop {
 
-            'inner: loop {
-                let batch = sqlx::query(&format!(
-                    r#"SELECT rowid, key, payload FROM "{table}" WHERE rowid > ? LIMIT 512"#
+                let (last_rowid, mut futures) = sqlx::query(&format!(
+                    r#"SELECT rowid, key, payload FROM "{table}" WHERE rowid > ? LIMIT ?"#
                 ))
                 .bind(offset)
+                .bind(self.limit as i64)
                 .fetch_all(&mut self.sql_conn)
                 .await?
                 .iter()
-                .map(|row| {
-                    (
-                        row.get::<i64, _>(0),
-                        row.get::<Vec<u8>, _>(1),
-                        row.get::<Vec<u8>, _>(2),
-                    )
-                })
-                .collect::<Vec<_>>();
+                .fold((None, futures::stream::FuturesUnordered::new()), |(_, mut futures), row| {
+                    let rowid = row.get::<i64, _>(0);
+                    let key = row.get::<Vec<u8>, _>(1);
+                    let payload = row.get::<Vec<u8>, _>(2);
 
-                if batch.is_empty() {
-                    break 'inner;
+                    futures.push(async move {
+                        let message = FutureRecord::to(&table)
+                            .key(key.as_slice())
+                            .payload(payload.as_slice())
+                            .headers(OwnedHeaders::new().insert(Header {
+                                key: "mycelite",
+                                value: Some("ignore".as_bytes()),
+                            }));
+                        client.send(message, Timeout::Never).await
+                    });
+
+                    (Some(rowid), futures)
+                });
+
+                if futures.is_empty() {
+                    break
                 }
 
-                let last_rowid = batch.last().map(|row| row.0);
-                for (_, key, payload) in batch {
-                    let message = FutureRecord::to(&table)
-                        .key(key.as_slice())
-                        .payload(payload.as_slice())
-                        .headers(OwnedHeaders::new().insert(Header {
-                            key: "mycelite",
-                            value: Some("ignore".as_bytes()),
-                        }));
-                    if let Err((e, _)) = client.send(message, Timeout::Never).await {
-                        return Err(e.into());
-                    }
+                while let Some(res) = futures.next().await {
+                    res.map_err(|e| e.0)?;
                 }
+
                 if let Some(value) = last_rowid {
                     self.handle.store_offset(&self.db_path, &table, value).await;
                     offset = value;
